@@ -11,7 +11,7 @@ class ExitException(Exception):
 def main():
     print ( 'FIRST: Function Identification and Recovery Signature Tool\n'
             'IDA Pro Integration\n'
-            'Requirements: \n',
+            'Requirements: \n'
             '- IDA Pro 6.9 sp1 or higher\n'
             '- Admin Privileges\n'
             '  (usually needed to copy plugin into IDA directory)\n\n')

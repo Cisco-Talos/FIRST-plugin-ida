@@ -46,7 +46,7 @@ To use the bleeding-edge version of FIRST's IDA Pro Integration, you can get the
 
 .. code-block:: console
 
-    $ git clone git://github.com/vrtadmin/first
+    $ git clone git://github.com/vrtadmin/FIRST-plugin-ida
     $ python setup.py install
 
 Once first-plugin-ida is installed with pip, the post installation script needs to be executed. The script simply copies over the plugin and its files to the IDA Pro installation of your choosing. Depending on your system setup, configuration, and user privileges you may need to be admin or root to successfully use the script.

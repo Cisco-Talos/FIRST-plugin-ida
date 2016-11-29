@@ -104,7 +104,7 @@ setup(
     # pip to create the appropriate form of executable for the target platform.
     entry_points={
         'console_scripts': [
-            'first-plugin-ida=first:main',
+            'first-plugin-ida=first_plugin_ida:main',
         ],
     },
 )
