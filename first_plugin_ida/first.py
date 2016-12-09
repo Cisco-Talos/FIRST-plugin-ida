@@ -3113,7 +3113,10 @@ class FIRST(object):
 
             def __data(self, thread, data):
                 if ('failed' in data) and data['failed']:
-                    msg = '[1st] Error: {}'.format(result['msg'])
+                    if 'msg' not in data:
+                        return
+
+                    msg = '[1st] Error: {}'.format(data['msg'])
                     idaapi.execute_ui_requests((FIRSTUI.Requests.Print(msg),))
                     return
 
