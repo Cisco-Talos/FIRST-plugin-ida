@@ -636,6 +636,13 @@ class FIRST(object):
         for i in xrange(imports):
             IDAW.enum_import_names(i, func)
 
+    @staticmethod
+    def cleanup_hooks():
+        if FIRST.installed_hooks:
+            for x in FIRST.installed_hooks:
+                x.unhook()
+            FIRST.installed_hooks = []
+
 
     class Error(Exception):
         '''FIRST Exception Class'''
@@ -3510,11 +3517,7 @@ class FIRST(object):
 
             def term(self):
                 '''Removes all installed hooks.'''
-                if FIRST.installed_hooks:
-                    for x in FIRST.installed_hooks:
-                        x.unhook()
-
-                    FIRST.installed_hooks = []
+                FIRST.cleanup_hooks()
 
 
         class ActionHandler(idaapi.action_handler_t):
@@ -4953,8 +4956,6 @@ FIRST_ICON = get_first_icon(True).decode('hex')
 FIRST_ICON = IDAW.load_custom_icon(data=FIRST_ICON, format='png')
 
 
-FIRST.initialize()
-
 #   Function Identification and Recovery Signature Tool (FIRST) Plug-in Class
 #-------------------------------------------------------------------------------
 class FIRST_Plugin(idaapi.plugin_t):
@@ -4967,6 +4968,7 @@ class FIRST_Plugin(idaapi.plugin_t):
     wanted_hotkey = '1'
 
     def init(self):
+        FIRST.initialize()
         return idaapi.PLUGIN_KEEP
 
     def run(self, arg):
@@ -4974,7 +4976,7 @@ class FIRST_Plugin(idaapi.plugin_t):
             FIRST.plugin.Show(self.wanted_name)
 
     def term(self):
-        pass
+        FIRST.cleanup_hooks()
 
 def PLUGIN_ENTRY():
     global required_modules_loaded
