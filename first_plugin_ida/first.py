@@ -66,6 +66,9 @@ from os.path import exists
 from hashlib import sha256, md5, sha1
 from base64 import b64encode, b64decode
 
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
 #   Constants
 #-------------------------------------------------------------------------------
 FIRST_INDEX = {
@@ -4110,8 +4113,12 @@ class FIRSTUI(object):
             modifiers = QtGui.QGuiApplication.keyboardModifiers()
             row_nr = index.row()
             if modifiers == Qt.ShiftModifier and data_model.last_selected_row is not None:
-                for x in range(data_model.last_selected_row + 1, row_nr + 1):
-                    data_model.set_row_selected(x)
+                if row_nr >= data_model.last_selected_row:
+                    for x in xrange(data_model.last_selected_row + 1, row_nr + 1):
+                        data_model.set_row_selected(x)
+                else:
+                    for x in xrange(row_nr, data_model.last_selected_row):
+                        data_model.set_row_selected(x)
             else:            
                 data_model.set_row_selected(row_nr)
             data_model.last_selected_row = row_nr
