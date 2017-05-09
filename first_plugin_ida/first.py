@@ -2669,6 +2669,7 @@ class FIRST(object):
 
                 self.select_all_flag = False
                 self.rows_selected = set()
+                self.last_selected_row = None
 
             def set_row_selected(self, row):
                 '''Causes a row to be selected or deselected.
@@ -3113,10 +3114,7 @@ class FIRST(object):
 
             def __data(self, thread, data):
                 if ('failed' in data) and data['failed']:
-                    if 'msg' not in data:
-                        return
-
-                    msg = '[1st] Error: {}'.format(data['msg'])
+                    msg = '[1st] Error: {}'.format(result['msg'])
                     idaapi.execute_ui_requests((FIRSTUI.Requests.Print(msg),))
                     return
 
@@ -4109,7 +4107,14 @@ class FIRSTUI(object):
                 self.select_all.setChecked(False)
                 self.select_all.stateChanged.connect(self.select_all_callback)
 
-            data_model.set_row_selected(index.row())
+            modifiers = QtGui.QGuiApplication.keyboardModifiers()
+            row_nr = index.row()
+            if modifiers == Qt.ShiftModifier and data_model.last_selected_row is not None:
+                for x in range(data_model.last_selected_row + 1, row_nr + 1):
+                    data_model.set_row_selected(x)
+            else:            
+                data_model.set_row_selected(row_nr)
+            data_model.last_selected_row = row_nr
             table_view.reset()
 
         def get_selected_data(self):
