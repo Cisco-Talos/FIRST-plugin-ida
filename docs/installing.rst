@@ -108,7 +108,7 @@ Installing on Mac OS X requires a little more work, once you've installed IDA Pr
    * - Dependency Instructions
      - pip install requests
 
-       cp /usr/local/lib/python2.7/sites-packages/requests* /Applications/IDA\ Pro\ 6.9/idaq.app/Contents/MacOS/python
+       cp /usr/local/lib/python2.7/site-packages/requests* /Applications/IDA\ Pro\ 6.9/idaq.app/Contents/MacOS/python
 
 Linux
 =====
