@@ -226,7 +226,7 @@ class FIRST_FormClass(idaapi.PluginForm):
         self.thread_stop = False
 
         #   wait several seconds
-        for i in xrange(3):
+        for i in xrange(2):
             time.sleep(1)
             if idaapi.wasBreak():
                 self.thread_stop = True
@@ -593,12 +593,14 @@ class FIRST_FormClass(idaapi.PluginForm):
         dialog.show()
 
 class FIRST(object):
+    debug = False
+
     #   About Information
     #------------------------
     VERSION = 'BETA'
-    DATE = 'November 2016'
+    DATE = 'August 2017'
     BEGIN = 2014
-    END = 2016
+    END = 2017
 
     plugin_enabled = False
     show_welcome = False
@@ -1954,8 +1956,6 @@ class FIRST(object):
             for key in params:
                 if params[key] is None:
                     params[key] = ''
-            #idaapi.execute_ui_requests((FIRSTUI.Requests.Print('[POST] Sending: '),))
-            #pprint(params)
 
             authentication = None
             if self.auth:
@@ -1966,6 +1966,13 @@ class FIRST(object):
                 authentication = HTTPKerberosAuth()
 
             url = self.urn.format(self, self.paths[action])
+            if FIRST.debug:
+                idaapi.execute_ui_requests(
+                    (FIRSTUI.Requests.Print(
+                        '[POST] {}\nSending: '.format(url.format(self._user()))),)
+                )
+                pprint(params)
+
             try:
                 response = requests.post(url.format(self._user()),
                                             data=params,
@@ -1989,6 +1996,11 @@ class FIRST(object):
                 idaapi.execute_ui_requests((FIRSTUI.Requests.MsgBox(title, msg),))
                 return
 
+            if FIRST.debug:
+                print response
+                if 'content' in dir(response):
+                    print response.content
+
             if 'status_code' not in dir(response):
                 return None
             elif 200 != response.status_code:
@@ -2002,8 +2014,9 @@ class FIRST(object):
             #    pass
 
             response = self.to_json(response)
-            #idaapi.execute_ui_requests((FIRSTUI.Requests.Print('Server Response:'),))
-            #pprint(response)
+            if FIRST.debug:
+                idaapi.execute_ui_requests((FIRSTUI.Requests.Print('Server Response:'),))
+                pprint(response)
 
             return response
 
@@ -2226,9 +2239,6 @@ class FIRST(object):
             if (isinstance(metadata, FIRST.MetadataShim)
                 or isinstance(metadata, FIRST.MetadataServer)):
                 metadata = metadata.id
-
-            elif not re.match('^[\da-f]{25}$', metadata):
-                return None
 
             try:
                 response = self._sendp('history', {'metadata' : json.dumps([metadata])})
@@ -4692,7 +4702,7 @@ class FIRSTUI(object):
             if not utc_str:
                 return None
 
-            utc_dt = datetime.datetime.strptime(utc_str, '%Y-%m-%dT%H:%M:%S.%f')
+            utc_dt = datetime.datetime.strptime(utc_str[:26], '%Y-%m-%dT%H:%M:%S.%f')
             timestamp = calendar.timegm(utc_dt.timetuple())
             local = datetime.datetime.fromtimestamp(timestamp)
             return local.replace(microsecond=utc_dt.microsecond)
