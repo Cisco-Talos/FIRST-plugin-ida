@@ -62,6 +62,7 @@ import calendar
 import threading
 import collections
 import ConfigParser
+from pprint import pprint
 from os.path import exists
 from hashlib import sha256, md5, sha1
 from base64 import b64encode, b64decode
@@ -82,8 +83,18 @@ class IDAWrapper(object):
     '''
     Class to wrap functions that are not thread safe
     '''
+    mapping = {
+        'get_tform_type' : 'get_widget_type',
+
+    }
+    def __init__(self):
+        self.version = idaapi.IDA_SDK_VERSION
+
     def __getattribute__(self, name):
         default = '[1st] default'
+
+        if (idaapi.IDA_SDK_VERSION >= 700) and (name in IDAWrapper.mapping):
+            name = IDAWrapper.mapping[name]
 
         val = getattr(idaapi, name, default)
         if val == default:
@@ -220,19 +231,22 @@ class FIRST_FormClass(idaapi.PluginForm):
 
         #   Add chunks to the list at a time receieved
         self.__received_data = False
-        idaapi.show_wait_box('Querying FIRST for metadata you\'ve created')
-        server_thread = FIRST.server.created(self.__data_callback, self.__complete_callback)
-        #   Spawn thread to get chunks of data back from server
-        self.thread_stop = False
+        if FIRST.server:
+            #   Spawn thread to get chunks of data back from server
+            self.thread_stop = False
+            idaapi.show_wait_box('Querying FIRST for metadata you\'ve created')
+            server_thread = FIRST.server.created(self.__data_callback,
+                                                    self.__complete_callback)
 
-        #   wait several seconds
-        for i in xrange(2):
-            time.sleep(1)
-            if idaapi.wasBreak():
-                self.thread_stop = True
-                FIRST.server.stop_operation(server_thread)
+            #   wait several seconds
+            for i in xrange(2):
+                time.sleep(1)
+                if idaapi.wasBreak():
+                    self.thread_stop = True
+                    FIRST.server.stop_operation(server_thread)
 
-        idaapi.hide_wait_box()
+            idaapi.hide_wait_box()
+
 
         self.history_dialogs = []
         tree_view.setContextMenuPolicy(Qt.ActionsContextMenu)
@@ -826,10 +840,13 @@ class FIRST(object):
                 list: Empty list or list of `MetadataShim` objects
             '''
             applied_metadata = []
-            for segment in FIRST.Metadata.get_segments_with_functions():
-                for function in FIRST.Metadata.get_segment_functions(segment):
-                    if function.id:
-                        applied_metadata.append(function)
+            segments = FIRST.Metadata.get_segments_with_functions()
+            if segments:
+                for segment in segments:
+                    functions = FIRST.Metadata.get_segment_functions(segment)
+                    for function in functions:
+                        if function.id:
+                            applied_metadata.append(function)
 
             return applied_metadata
 
@@ -3355,7 +3372,10 @@ class FIRST(object):
             def __init__(self):
                 super(FIRST.Hook.IDP, self).__init__()
 
-            def auto_queue_empty(self, arg):
+            def ev_auto_queue_empty(self, arg):
+                self.auto_queue_empty(arg, before7=False)
+
+            def auto_queue_empty(self, arg, before7=True):
                 '''Called function for signaling queue status changes.
 
                 The function will populate FIRST's in memory function list, get
@@ -3394,7 +3414,9 @@ class FIRST(object):
 
                         FIRST.plugin_enabled = True
 
-                return super(self.__class__, self).auto_queue_empty(arg)
+                if before7:
+                    return super(self.__class__, self).auto_queue_empty(arg)
+                return super(self.__class__, self).ev_auto_queue_empty(arg)
 
 
         class UI(idaapi.UI_Hooks):
