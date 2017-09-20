@@ -3373,7 +3373,7 @@ class FIRST(object):
                 super(FIRST.Hook.IDP, self).__init__()
 
             def ev_auto_queue_empty(self, arg):
-                self.auto_queue_empty(arg, before7=False)
+                return self.auto_queue_empty(arg, before7=False)
 
             def auto_queue_empty(self, arg, before7=True):
                 '''Called function for signaling queue status changes.
