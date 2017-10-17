@@ -85,7 +85,6 @@ class IDAWrapper(object):
     '''
     mapping = {
         'get_tform_type' : 'get_widget_type',
-
     }
     def __init__(self):
         self.version = idaapi.IDA_SDK_VERSION
@@ -98,10 +97,10 @@ class IDAWrapper(object):
 
         val = getattr(idaapi, name, default)
         if val == default:
-            val = getattr(idc, name, default)
+            val = getattr(idautils, name, default)
 
         if val == default:
-            val = getattr(idautils, name, default)
+            val = getattr(idc, name, default)
 
         if val == default:
             msg = 'Unable to find {}'.format(name)
@@ -867,6 +866,39 @@ class FIRST(object):
         '''
         processor_map = {'metapc' : 'intel'}
         include_bits = ['intel', 'arm']
+
+        @staticmethod
+        def set_file_details(md5, crc32, sha1=None, sha256=None):
+            '''Sets details about the sample.
+
+            This is a work around for situations where there is no original
+            sample on disk that IDA analyzes. FIRST requires a MD5 and CRC32 to
+            store functions, without it the function will not be saved.
+
+            Args:
+                md5 (:obj:`str`): Valid MD5 hash
+            '''
+            #   Validate User Input
+            md5 = md5.lower()
+            if not re.match(r'^[a-f\d]{32}$', md5) or type(crc32) != int:
+                return
+
+            db = IDAW.GetArrayId(FIRST_DB)
+            key = FIRST_INDEX['hashes']
+            if -1 == db:
+                db = IDAW.CreateArray(FIRST_DB)
+
+            #   Get hashes from file
+            data = {'md5' : md5,
+                    'sha1' : sha1,
+                    'sha256' : sha256,
+                    'crc32' : crc32}
+            IDAW.SetArrayString(db, key, json.dumps(data))
+
+            #   Update server class
+            if FIRST.server and hasattr(FIRST.server, 'binary_info'):
+                FIRST.server = FIRST.Server(FIRST.config, md5, crc32, sha1, sha256)
+
 
         @staticmethod
         def get_file_details():
@@ -3147,16 +3179,20 @@ class FIRST(object):
 
             def __data(self, thread, data):
                 if ('failed' in data) and data['failed']:
+                    idaapi.hide_wait_box()
                     if 'msg' not in data:
                         return
 
                     msg = '[1st] Error: {}'.format(data['msg'])
-                    idaapi.execute_ui_requests((FIRSTUI.Requests.Print(msg),))
+                    print msg
+                    #idaapi.execute_ui_requests((FIRSTUI.Requests.Print(msg),))
                     return
 
                 if ('results' not in data):
+                    idaapi.hide_wait_box()
                     msg = '[1st] Error: no results returned'
-                    idaapi.execute_ui_requests((FIRSTUI.Requests.Print(msg),))
+                    print msg
+                    #idaapi.execute_ui_requests((FIRSTUI.Requests.Print(msg),))
                     return
 
                 results = data['results']
