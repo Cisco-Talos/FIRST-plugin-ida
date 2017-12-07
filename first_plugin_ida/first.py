@@ -611,7 +611,7 @@ class FIRST(object):
     #   About Information
     #------------------------
     VERSION = 'BETA'
-    DATE = 'August 2017'
+    DATE = 'December 2017'
     BEGIN = 2014
     END = 2017
 
@@ -3408,17 +3408,7 @@ class FIRST(object):
             def __init__(self):
                 super(FIRST.Hook.IDP, self).__init__()
 
-            def ev_auto_queue_empty(self, arg):
-                return self.auto_queue_empty(arg, before7=False)
-
-            def auto_queue_empty(self, arg, before7=True):
-                '''Called function for signaling queue status changes.
-
-                The function will populate FIRST's in memory function list, get
-                the required file details, read in FIRST's configuration and
-                set up the FIRST server connection. After initialization the
-                hook removes itself from the IDP hook queue.
-                '''
+            def on_auto_queue_empty(self, arg):
                 if (arg == 200) and (not FIRST.Hook.IDP.executed):
                     FIRST.Hook.IDP.executed = True
                     self.unhook()
@@ -3450,10 +3440,14 @@ class FIRST(object):
 
                         FIRST.plugin_enabled = True
 
-                if before7:
+            if idaapi.get_kernel_version().startswith("7"):
+                def ev_auto_queue_empty(self, arg):
+                    self.on_auto_queue_empty(arg)
+                    return super(self.__class__, self).ev_auto_queue_empty(arg)
+            else:
+                def auto_queue_empty(self, arg):
+                    self.on_auto_queue_empty(arg)
                     return super(self.__class__, self).auto_queue_empty(arg)
-                return super(self.__class__, self).ev_auto_queue_empty(arg)
-
 
         class UI(idaapi.UI_Hooks):
             '''FIRST's UI Hook. Sets UI change hooks and right click menu.'''
