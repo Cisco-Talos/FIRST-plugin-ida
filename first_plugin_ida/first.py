@@ -611,9 +611,9 @@ class FIRST(object):
     #   About Information
     #------------------------
     VERSION = 'BETA'
-    DATE = 'December 2017'
+    DATE = 'January 2018'
     BEGIN = 2014
-    END = 2017
+    END = 2018
 
     plugin_enabled = False
     show_welcome = False
@@ -641,15 +641,6 @@ class FIRST(object):
         FIRST.installed_hooks = [FIRST.Hook.IDP(), FIRST.Hook.UI()]
         [x.hook() for x in FIRST.installed_hooks]
         FIRST.plugin = FIRST_FormClass()
-
-        #   populate iat
-        func = lambda ea, name, ord: FIRST.iat.append(name) == None
-        imports = IDAW.get_import_module_qty()
-        if not imports:
-            return
-
-        for i in xrange(imports):
-            IDAW.enum_import_names(i, func)
 
     @staticmethod
     def cleanup_hooks():
@@ -1041,6 +1032,13 @@ class FIRST(object):
                 list: Empty list or list of `MetadataShim` objects
             '''
             apis = []
+            #   populate iat
+            if not FIRST.iat:
+                func = lambda ea, name, ord: FIRST.iat.append(name) == None
+                imports = IDAW.get_import_module_qty()
+                if imports:
+                    for i in xrange(imports):
+                        IDAW.enum_import_names(i, func)
 
             #   Cycle through all instructions within the function
             for instr in IDAW.FuncItems(address):
@@ -1731,9 +1729,9 @@ class FIRST(object):
             config (:obj:`RawConfigParser`): Configuration details for plugin.
         '''
         def __init__(self, config=None):
-            self.__server = 'first-plugin.us'
-            self.__port = 5000
-            self.__protocol = 'https'
+            self.__server = 'first.talosintelligence.com'
+            self.__port = 80
+            self.__protocol = 'http'
             self.__verify = False
             self.__auth = False
             self.__api_key = ''
