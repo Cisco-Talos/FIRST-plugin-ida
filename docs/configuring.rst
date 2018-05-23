@@ -9,6 +9,8 @@ Initial Installation
 ====================
 When FIRST is initially installed and IDA is loaded a *Welcome* dialog box will appear. This only appears when FIRST is not configured.
 
+**Notice: public server moved to first.talosintelligence.com:443.**
+
 .. figure:: _static/images/welcome.gif
     :align: center
     :alt: FIRST welcome dialog box (with invalid API key)
@@ -16,7 +18,7 @@ When FIRST is initially installed and IDA is loaded a *Welcome* dialog box will 
     FIRST welcome dialog box (with invalid API key)
 
 
-The configuration requires a valid API key that can be obtained from the server (go to first-plugin.us to register with public server). Make sure to test the connection and select **Save**
+The configuration requires a valid API key that can be obtained from the server (go to first.talosintelligence.com to register with public server). Make sure to test the connection and select **Save**
 
 Plugin Main Window
 ==================
