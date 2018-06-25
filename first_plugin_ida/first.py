@@ -611,7 +611,7 @@ class FIRST(object):
     #   About Information
     #------------------------
     VERSION = 'BETA'
-    DATE = 'January 2018'
+    DATE = 'May 2018'
     BEGIN = 2014
     END = 2018
 
