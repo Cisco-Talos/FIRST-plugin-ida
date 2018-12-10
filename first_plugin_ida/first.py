@@ -62,6 +62,7 @@ import calendar
 import threading
 import collections
 import ConfigParser
+from pprint import pprint
 from os.path import exists
 from hashlib import sha256, md5, sha1
 from base64 import b64encode, b64decode
@@ -85,8 +86,18 @@ class IDAWrapper(object):
     '''
     Class to wrap functions that are not thread safe
     '''
+    mapping = {
+        'get_tform_type' : 'get_widget_type',
+
+    }
+    def __init__(self):
+        self.version = idaapi.IDA_SDK_VERSION
+
     def __getattribute__(self, name):
         default = '[1st] default'
+
+        if (idaapi.IDA_SDK_VERSION >= 700) and (name in IDAWrapper.mapping):
+            name = IDAWrapper.mapping[name]
 
         val = getattr(idaapi, name, default)
         if val == default:
@@ -223,19 +234,22 @@ class FIRST_FormClass(idaapi.PluginForm):
 
         #   Add chunks to the list at a time receieved
         self.__received_data = False
-        idaapi.show_wait_box('Querying FIRST for metadata you\'ve created')
-        server_thread = FIRST.server.created(self.__data_callback, self.__complete_callback)
-        #   Spawn thread to get chunks of data back from server
-        self.thread_stop = False
+        if FIRST.server:
+            #   Spawn thread to get chunks of data back from server
+            self.thread_stop = False
+            idaapi.show_wait_box('Querying FIRST for metadata you\'ve created')
+            server_thread = FIRST.server.created(self.__data_callback,
+                                                    self.__complete_callback)
 
-        #   wait several seconds
-        for i in xrange(3):
-            time.sleep(1)
-            if idaapi.wasBreak():
-                self.thread_stop = True
-                FIRST.server.stop_operation(server_thread)
+            #   wait several seconds
+            for i in xrange(2):
+                time.sleep(1)
+                if idaapi.wasBreak():
+                    self.thread_stop = True
+                    FIRST.server.stop_operation(server_thread)
 
-        idaapi.hide_wait_box()
+            idaapi.hide_wait_box()
+
 
         self.history_dialogs = []
         tree_view.setContextMenuPolicy(Qt.ActionsContextMenu)
@@ -596,12 +610,14 @@ class FIRST_FormClass(idaapi.PluginForm):
         dialog.show()
 
 class FIRST(object):
+    debug = False
+
     #   About Information
     #------------------------
     VERSION = 'BETA'
-    DATE = 'November 2016'
+    DATE = 'August 2017'
     BEGIN = 2014
-    END = 2016
+    END = 2017
 
     plugin_enabled = False
     show_welcome = False
@@ -638,6 +654,13 @@ class FIRST(object):
 
         for i in xrange(imports):
             IDAW.enum_import_names(i, func)
+
+    @staticmethod
+    def cleanup_hooks():
+        if FIRST.installed_hooks:
+            for x in FIRST.installed_hooks:
+                x.unhook()
+            FIRST.installed_hooks = []
 
 
     class Error(Exception):
@@ -820,10 +843,13 @@ class FIRST(object):
                 list: Empty list or list of `MetadataShim` objects
             '''
             applied_metadata = []
-            for segment in FIRST.Metadata.get_segments_with_functions():
-                for function in FIRST.Metadata.get_segment_functions(segment):
-                    if function.id:
-                        applied_metadata.append(function)
+            segments = FIRST.Metadata.get_segments_with_functions()
+            if segments:
+                for segment in segments:
+                    functions = FIRST.Metadata.get_segment_functions(segment)
+                    for function in functions:
+                        if function.id:
+                            applied_metadata.append(function)
 
             return applied_metadata
 
@@ -1950,8 +1976,6 @@ class FIRST(object):
             for key in params:
                 if params[key] is None:
                     params[key] = ''
-            #idaapi.execute_ui_requests((FIRSTUI.Requests.Print('[POST] Sending: '),))
-            #pprint(params)
 
             authentication = None
             if self.auth:
@@ -1962,6 +1986,13 @@ class FIRST(object):
                 authentication = HTTPKerberosAuth()
 
             url = self.urn.format(self, self.paths[action])
+            if FIRST.debug:
+                idaapi.execute_ui_requests(
+                    (FIRSTUI.Requests.Print(
+                        '[POST] {}\nSending: '.format(url.format(self._user()))),)
+                )
+                pprint(params)
+
             try:
                 response = requests.post(url.format(self._user()),
                                             data=params,
@@ -1985,6 +2016,11 @@ class FIRST(object):
                 idaapi.execute_ui_requests((FIRSTUI.Requests.MsgBox(title, msg),))
                 return
 
+            if FIRST.debug:
+                print response
+                if 'content' in dir(response):
+                    print response.content
+
             if 'status_code' not in dir(response):
                 return None
             elif 200 != response.status_code:
@@ -1998,8 +2034,9 @@ class FIRST(object):
             #    pass
 
             response = self.to_json(response)
-            #idaapi.execute_ui_requests((FIRSTUI.Requests.Print('Server Response:'),))
-            #pprint(response)
+            if FIRST.debug:
+                idaapi.execute_ui_requests((FIRSTUI.Requests.Print('Server Response:'),))
+                pprint(response)
 
             return response
 
@@ -2222,9 +2259,6 @@ class FIRST(object):
             if (isinstance(metadata, FIRST.MetadataShim)
                 or isinstance(metadata, FIRST.MetadataServer)):
                 metadata = metadata.id
-
-            elif not re.match('^[\da-f]{25}$', metadata):
-                return None
 
             try:
                 response = self._sendp('history', {'metadata' : json.dumps([metadata])})
@@ -3339,7 +3373,10 @@ class FIRST(object):
             def __init__(self):
                 super(FIRST.Hook.IDP, self).__init__()
 
-            def auto_queue_empty(self, arg):
+            def ev_auto_queue_empty(self, arg):
+                return self.auto_queue_empty(arg, before7=False)
+
+            def auto_queue_empty(self, arg, before7=True):
                 '''Called function for signaling queue status changes.
 
                 The function will populate FIRST's in memory function list, get
@@ -3378,7 +3415,9 @@ class FIRST(object):
 
                         FIRST.plugin_enabled = True
 
-                return super(self.__class__, self).auto_queue_empty(arg)
+                if before7:
+                    return super(self.__class__, self).auto_queue_empty(arg)
+                return super(self.__class__, self).ev_auto_queue_empty(arg)
 
 
         class UI(idaapi.UI_Hooks):
@@ -3511,11 +3550,7 @@ class FIRST(object):
 
             def term(self):
                 '''Removes all installed hooks.'''
-                if FIRST.installed_hooks:
-                    for x in FIRST.installed_hooks:
-                        x.unhook()
-
-                    FIRST.installed_hooks = []
+                FIRST.cleanup_hooks()
 
 
         class ActionHandler(idaapi.action_handler_t):
@@ -4701,7 +4736,7 @@ class FIRSTUI(object):
             if not utc_str:
                 return None
 
-            utc_dt = datetime.datetime.strptime(utc_str, '%Y-%m-%dT%H:%M:%S.%f')
+            utc_dt = datetime.datetime.strptime(utc_str[:26], '%Y-%m-%dT%H:%M:%S.%f')
             timestamp = calendar.timegm(utc_dt.timetuple())
             local = datetime.datetime.fromtimestamp(timestamp)
             return local.replace(microsecond=utc_dt.microsecond)
@@ -4965,8 +5000,6 @@ FIRST_ICON = get_first_icon(True).decode('hex')
 FIRST_ICON = IDAW.load_custom_icon(data=FIRST_ICON, format='png')
 
 
-FIRST.initialize()
-
 #   Function Identification and Recovery Signature Tool (FIRST) Plug-in Class
 #-------------------------------------------------------------------------------
 class FIRST_Plugin(idaapi.plugin_t):
@@ -4979,6 +5012,7 @@ class FIRST_Plugin(idaapi.plugin_t):
     wanted_hotkey = '1'
 
     def init(self):
+        FIRST.initialize()
         return idaapi.PLUGIN_KEEP
 
     def run(self, arg):
@@ -4986,7 +5020,7 @@ class FIRST_Plugin(idaapi.plugin_t):
             FIRST.plugin.Show(self.wanted_name)
 
     def term(self):
-        pass
+        FIRST.cleanup_hooks()
 
 def PLUGIN_ENTRY():
     global required_modules_loaded

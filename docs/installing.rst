@@ -108,8 +108,30 @@ Installing on Mac OS X requires a little more work, once you've installed IDA Pr
    * - Dependency Instructions
      - pip install requests
 
-       cp /usr/local/lib/python2.7/sites-packages/requests* /Applications/IDA\ Pro\ 6.9/idaq.app/Contents/MacOS/python
+       cp /usr/local/lib/python2.7/site-packages/requests* /Applications/IDA\ Pro\ 6.9/idaq.app/Contents/MacOS/python
 
 Linux
 =====
-Still trying to figure this one out... anyone know how?
+During the setup, IDA asks whether to install with the bundled Python interpreter or use the local Python interpreter from the local system. Bundled Python is nice, everything just works by default. However the downside is that you can't really add and upgrade Python libraries, and the FIRST plugin requires the requests plugin which is not by default in the bundle.
+
+If you installed with bundled Python, you can switch to use the local Python simply by renaming ``libpython2.7.so.1.0`` and ``python/lib/python27.zip``. For instance:
+
+.. code-block:: console
+
+    $ cd $IDA_DIR
+    $ mv libpython2.7.so.1.0{,.orig}
+    $ mv python/lib/python27.zip{,.orig}
+
+You can revert back to bundle Python by reverting the renames.
+
+Unfortunately the downside of using local Python is that if you are running under x86_64, IDA being a 32-bit binary, it won't work out of the box. Fortunately, under recent Debian (e.g. stretch) and Ubuntu, you can install libs from other architectures. For instance, what worked for us:
+
+.. code-block:: console
+
+    $ dpkg --add-architecture i386
+    $ apt update
+    $ apt install --no-install-recommends gtk2-engines-murrine:i386 gtk2-engines-pixbuf:i386 libc6-i686:i386 libcurl3:i386 libdbus-1-3:i386 libexpat1:i386 libffi6:i386 libfontconfig1:i386 libfreetype6:i386 libgcc1:i386 libglib2.0-0:i386 libgtk2.0-0:i386 libice6:i386 libpcre3:i386 libpng16-16:i386 libpython2.7:i386 libsm6:i386 libstdc++6:i386 libuuid1:i386 libx11-6:i386 libx11-xcb1:i386 libxau6:i386 libxcb1:i386 libxdmcp6:i386 libxext6:i386 libxi6:i386 libxrender1:i386 python-pyqt5:i386 xdg-utils zlib1g:i386 python-requests
+
+Tip: if your distro is different or too old, try a chroot (e.g. debootstrap & schroot), works pretty well.
+
+Copy the FIRST plugin (``first.py``) to your plugins directory (``~/.idapro/plugins``) and start IDA (32 or 64), it should all work!
