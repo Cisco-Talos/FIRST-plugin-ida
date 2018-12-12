@@ -30,6 +30,7 @@
 import idc
 import idaapi
 import idautils
+import random
 
 #   Third Party Python Modules
 required_modules_loaded = True
@@ -115,6 +116,7 @@ class IDAWrapper(object):
                     holder[0] = val(*args, **kwargs)
                     return 1
 
+                // TODO Consider changing this to use MFF_WRITE for safety
                 idaapi.execute_sync(trampoline, idaapi.MFF_FAST)
                 return holder[0]
             return call
@@ -123,6 +125,24 @@ class IDAWrapper(object):
             return val
 
 IDAW = IDAWrapper()
+
+def safe_generator(iterator):
+    sentinel = '[1st] Sentinel %d' % (random.randint(0, 65535))
+    holder = [sentinel] # need a holder, because 'global' sucks
+
+    def trampoline():
+        try:
+            holder[0] = next(iterator)
+        except StopIteration:
+            holder[0] = sentinel
+        return 1
+
+    while True:
+        // TODO Consider changing this to use MFF_WRITE for safety
+        idaapi.execute_sync(trampoline, idaapi.MFF_FAST)
+        if holder[0] == sentinel:
+            return
+        yield holder[0]
 
 #   Main Plug-in Form Class
 #-------------------------------------------------------------------------------
@@ -1041,7 +1061,7 @@ class FIRST(object):
                         IDAW.enum_import_names(i, func)
 
             #   Cycle through all instructions within the function
-            for instr in IDAW.FuncItems(address):
+            for instr in safe_generator(IDAW.FuncItems(address)):
                 name = None
                 if not IDAW.is_call_insn(instr):
                     instruction = IDAW.DecodeInstruction(instr)
@@ -1055,7 +1075,7 @@ class FIRST(object):
 
                 else:
                     #   It is a call instruction
-                    for xref in IDAW.XrefsFrom(instr, IDAW.XREF_FAR):
+                    for xref in safe_generator(IDAW.XrefsFrom(instr, IDAW.XREF_FAR)):
                         if xref.to == None:
                             break
 
