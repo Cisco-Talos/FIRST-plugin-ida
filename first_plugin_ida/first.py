@@ -30,6 +30,7 @@
 import idc
 import idaapi
 import idautils
+import random
 
 #   Third Party Python Modules
 required_modules_loaded = True
@@ -81,7 +82,10 @@ FIRST_DB = 'FIRST_data'
 
 class IDAWrapper(object):
     '''
-    Class to wrap functions that are not thread safe
+    Class to wrap functions that are not thread safe.  These functions must
+    be run on the main thread to avoid random crashes (and starting in 7.2,
+    this is enforced by IDA, with an exception being generated if a
+    thread-unsafe function is called from outside of the main thread.)
     '''
     mapping = {
         'get_tform_type' : 'get_widget_type',
@@ -115,7 +119,12 @@ class IDAWrapper(object):
                     holder[0] = val(*args, **kwargs)
                     return 1
 
-                idaapi.execute_sync(trampoline, idaapi.MFF_FAST)
+                # Execute the request using MFF_WRITE, which should be safe for
+                # any possible request at the expense of speed.  In my testing,
+                # though, it wasn't noticably slower than MFF_FAST.  If this
+                # is observed to impact performance, consider creating a list
+                # that maps API calls to the most appropriate flag.
+                idaapi.execute_sync(trampoline, idaapi.MFF_WRITE)
                 return holder[0]
             return call
 
@@ -123,6 +132,33 @@ class IDAWrapper(object):
             return val
 
 IDAW = IDAWrapper()
+
+# Some of the IDA API functions return generators that invoke thread-unsafe
+# code during iteration.  Thus, making the initial API call via IDAW is not
+# sufficient to have these underlying API calls be executed safely on the
+# main thread.  This generator wraps those and performs the iteration safely.
+def safe_generator(iterator):
+
+    # Make the sentinel value something that isn't likely to be returned
+    # by an API call (and isn't a fixed string that could be inserted into
+    # a program to break FIRST maliciously)
+    sentinel = '[1st] Sentinel %d' % (random.randint(0, 65535))
+
+    holder = [sentinel] # need a holder, because 'global' sucks
+
+    def trampoline():
+        try:
+            holder[0] = next(iterator)
+        except StopIteration:
+            holder[0] = sentinel
+        return 1
+
+    while True:
+        # See notes above regarding why we use MFF_WRITE here
+        idaapi.execute_sync(trampoline, idaapi.MFF_WRITE)
+        if holder[0] == sentinel:
+            return
+        yield holder[0]
 
 #   Main Plug-in Form Class
 #-------------------------------------------------------------------------------
@@ -1041,7 +1077,7 @@ class FIRST(object):
                         IDAW.enum_import_names(i, func)
 
             #   Cycle through all instructions within the function
-            for instr in IDAW.FuncItems(address):
+            for instr in safe_generator(IDAW.FuncItems(address)):
                 name = None
                 if not IDAW.is_call_insn(instr):
                     instruction = IDAW.DecodeInstruction(instr)
@@ -1055,7 +1091,7 @@ class FIRST(object):
 
                 else:
                     #   It is a call instruction
-                    for xref in IDAW.XrefsFrom(instr, IDAW.XREF_FAR):
+                    for xref in safe_generator(IDAW.XrefsFrom(instr, IDAW.XREF_FAR)):
                         if xref.to == None:
                             break
 
