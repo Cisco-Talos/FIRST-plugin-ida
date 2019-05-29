@@ -36,6 +36,8 @@ import random
 required_modules_loaded = True
 try:
     import requests
+    from requests.packages.urllib3.exceptions import InsecureRequestWarning
+    requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 except ImportError:
     required_modules_loaded &= False
     print 'FIRST requires Python module requests\n'
@@ -79,6 +81,8 @@ FIRST_INDEX = {
 #-------------------------------------------------------------------------------
 FIRST_ICON = None
 FIRST_DB = 'FIRST_data'
+
+g_network_headers = {}
 
 class IDAWrapper(object):
     '''
@@ -674,6 +678,18 @@ class FIRST(object):
     def initialize():
         '''Initializes FIRST by installing hooks and populating required data
         strucutres.'''
+        global g_network_headers
+        
+        g_network_headers['User-Agent'] = "FIRST {} {} Cython {}({}.{}.{}) {}".format(
+            FIRST.VERSION,
+            FIRST.DATE,
+            sys.api_version,
+            sys.version_info.major,
+            sys.version_info.minor,
+            sys.version_info.releaselevel,
+            sys.platform
+            )
+            
         FIRST.installed_hooks = [FIRST.Hook.IDP(), FIRST.Hook.UI()]
         [x.hook() for x in FIRST.installed_hooks]
         FIRST.plugin = FIRST_FormClass()
@@ -2060,6 +2076,7 @@ class FIRST(object):
                 response = requests.post(url.format(self._user()),
                                             data=params,
                                             verify=self.verify,
+                                            headers=g_network_headers,
                                             auth=authentication)
 
                 if raw:
@@ -2130,6 +2147,7 @@ class FIRST(object):
             try:
                 response = requests.get(url.format(params),
                                             verify=self.verify,
+                                            headers=g_network_headers,
                                             auth=authentication)
 
                 if raw:
