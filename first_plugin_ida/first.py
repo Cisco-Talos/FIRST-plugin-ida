@@ -991,13 +991,16 @@ class FIRST(object):
             Returns:
                 bool: True is 32bit or False.
             '''
-            info = IDAW.get_inf_structure()
-            if info.is_64bit():
-                return False
-            elif info.is_32bit():
-                return True
+            if (idaapi.IDA_SDK_VERSION < 730):
+                info = IDAW.get_inf_structure()
+                if info.is_64bit():
+                    return False
+                elif info.is_32bit():
+                    return True
 
-            return False
+                return False
+            else:
+                return IDAW.inf_is_32bit()
 
         @staticmethod
         def get_architecture():
@@ -1016,10 +1019,16 @@ class FIRST(object):
 
             if proc in FIRST.Info.include_bits:
                 bits = 16
-                if info.is_64bit():
-                    bits = 64
-                elif info.is_32bit():
-                    bits = 32
+                if (idaapi.IDA_SDK_VERSION < 730):
+                    if info.is_64bit():
+                        bits = 64
+                    elif info.is_32bit():
+                        bits = 32
+                else:
+                    if IDAW.inf_is_64bit():
+                        bits = 64
+                    elif IDAW.inf_is_32bit():
+                        bits = 32
 
                 return '{}{}'.format(proc, bits)
 
