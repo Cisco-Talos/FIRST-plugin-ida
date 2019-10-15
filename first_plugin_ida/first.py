@@ -1699,8 +1699,8 @@ class FIRST(object):
             config (:obj:`RawConfigParser`): Configuration details for plugin.
         '''
         def __init__(self, config=None):
-            self.__server = 'first-plugin.us'
-            self.__port = 5000
+            self.__server = 'first.talosintelligence.com'
+            self.__port = 443
             self.__protocol = 'https'
             self.__verify = False
             self.__auth = False
