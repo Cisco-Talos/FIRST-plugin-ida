@@ -392,9 +392,9 @@ class FIRST_FormClass(idaapi.PluginForm):
         grid_layout.addWidget(QtWidgets.QLabel(FIRST.DATE), 1, 1)
 
         grid_layout.addWidget(QtWidgets.QLabel('Report Issues'), 2, 0)
-        label = QtWidgets.QLabel(('<a href="https://git.vrt.sourcefire.com/'
-                                'demonduck/FIRST/issues/new">'
-                                'git.vrt.sourcefire.com</a>'))
+        label = QtWidgets.QLabel(('<a href="https://github.com/'
+                                'vrtadmin/FIRST-plugin-ida/issues">'
+                                'github.com/vrtadmin/FIRST-plugin-ida</a>'))
         label.setTextFormat(Qt.RichText)
         label.setTextInteractionFlags(Qt.TextBrowserInteraction)
         label.setOpenExternalLinks(True)
@@ -1791,8 +1791,8 @@ class FIRST(object):
         '''
         def __init__(self, config=None):
             self.__server = 'first.talosintelligence.com'
-            self.__port = 80
-            self.__protocol = 'http'
+            self.__port = 443
+            self.__protocol = 'https'
             self.__verify = False
             self.__auth = False
             self.__api_key = ''
