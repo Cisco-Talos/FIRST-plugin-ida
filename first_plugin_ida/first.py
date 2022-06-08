@@ -27,10 +27,10 @@
 #
 #-------------------------------------------------------------------------------
 #   IDA Pro Python Modules
-import idc
-import idaapi
-import idautils
 import random
+import functools
+from signal import default_int_handler
+
 
 #   Third Party Python Modules
 required_modules_loaded = True
@@ -40,12 +40,12 @@ try:
     requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 except ImportError:
     required_modules_loaded &= False
-    print 'FIRST requires Python module requests\n'
+    print('FIRST requires Python module requests\n')
 
 try:
     from requests_kerberos import HTTPKerberosAuth
 except ImportError:
-    print '[1st] Kerberos support is not avaialble'
+    print('[1st] Kerberos support is not avaialble')
     HTTPKerberosAuth = None
 
 from PyQt5 import QtGui, QtWidgets, QtCore
@@ -64,11 +64,22 @@ import datetime
 import calendar
 import threading
 import collections
-import ConfigParser
+from configparser import RawConfigParser
 from pprint import pprint
 from os.path import exists
 from hashlib import sha256, md5, sha1
 from base64 import b64encode, b64decode
+
+def cmp(a, b):
+    return (int(a) > int(b)) - (int(a) < int(b))
+
+def remove_dup(buffer:list):
+    ret = []
+    for b in buffer:
+        if b in ret:
+            continue
+        ret.append(b)
+    return ret
 
 #   Constants
 #-------------------------------------------------------------------------------
@@ -84,6 +95,20 @@ FIRST_DB = 'FIRST_data'
 
 g_network_headers = {}
 
+import ida_kernwin
+import ida_funcs
+import idc
+import idautils
+import ida_segment
+import idaapi
+import ida_ida
+import ida_nalt
+import ida_bytes
+import ida_ua
+import ida_name
+import ida_xref
+
+
 class IDAWrapper(object):
     '''
     Class to wrap functions that are not thread safe.  These functions must
@@ -92,7 +117,7 @@ class IDAWrapper(object):
     thread-unsafe function is called from outside of the main thread.)
     '''
     mapping = {
-        'get_tform_type' : 'get_widget_type',
+        'get_widget_type' : 'get_widget_type',
     }
     def __init__(self):
         self.version = idaapi.IDA_SDK_VERSION
@@ -103,12 +128,40 @@ class IDAWrapper(object):
         if (idaapi.IDA_SDK_VERSION >= 700) and (name in IDAWrapper.mapping):
             name = IDAWrapper.mapping[name]
 
-        val = getattr(idaapi, name, default)
+        val = getattr(ida_name, name, default)
+
         if val == default:
             val = getattr(idautils, name, default)
 
         if val == default:
             val = getattr(idc, name, default)
+        
+        if val == default:
+            val = getattr(ida_kernwin, name, default)
+        
+        if val == default:
+            val = getattr(ida_funcs, name, default)
+
+        if val == default:
+            val = getattr(ida_segment, name, default)
+
+        if val == default:
+            val = getattr(ida_ida, name, default)
+
+        if val == default:
+            val = getattr(ida_nalt, name, default)
+
+        if val == default:
+            val = getattr(ida_bytes, name, default)
+
+        if val == default:
+            val = getattr(ida_ua, name, default)
+
+        if val == default:
+            val = getattr(ida_xref, name, default)
+
+        if val == default:
+            val = getattr(idaapi, name, default)
 
         if val == default:
             msg = 'Unable to find {}'.format(name)
@@ -118,7 +171,6 @@ class IDAWrapper(object):
         if hasattr(val, '__call__'):
             def call(*args, **kwargs):
                 holder = [None] # need a holder, because 'global' sucks
-
                 def trampoline():
                     holder[0] = val(*args, **kwargs)
                     return 1
@@ -149,7 +201,6 @@ def safe_generator(iterator):
     sentinel = '[1st] Sentinel %d' % (random.randint(0, 65535))
 
     holder = [sentinel] # need a holder, because 'global' sucks
-
     def trampoline():
         try:
             holder[0] = next(iterator)
@@ -278,9 +329,9 @@ class FIRST_FormClass(idaapi.PluginForm):
                                                     self.__complete_callback)
 
             #   wait several seconds
-            for i in xrange(2):
+            for i in range(2):
                 time.sleep(1)
-                if idaapi.wasBreak():
+                if idaapi.user_cancelled():
                     self.thread_stop = True
                     FIRST.server.stop_operation(server_thread)
 
@@ -330,7 +381,7 @@ class FIRST_FormClass(idaapi.PluginForm):
         if not selected:
             return
 
-        ids = set([x.data(FIRSTUI.ROLE_ID) for x in selected])
+        ids = remove_dup([x.data(FIRSTUI.ROLE_ID) for x in selected])
         index = selected[0]
 
         for metadata_id in ids:
@@ -392,9 +443,9 @@ class FIRST_FormClass(idaapi.PluginForm):
         grid_layout.addWidget(QtWidgets.QLabel(FIRST.DATE), 1, 1)
 
         grid_layout.addWidget(QtWidgets.QLabel('Report Issues'), 2, 0)
-        label = QtWidgets.QLabel(('<a href="https://git.vrt.sourcefire.com/'
-                                'demonduck/FIRST/issues/new">'
-                                'git.vrt.sourcefire.com</a>'))
+        label = QtWidgets.QLabel(('<a href="https://github.com/'
+                                'vrtadmin/FIRST-plugin-ida/issues">'
+                                'github.com/vrtadmin/FIRST-plugin-ida</a>'))
         label.setTextFormat(Qt.RichText)
         label.setTextInteractionFlags(Qt.TextBrowserInteraction)
         label.setOpenExternalLinks(True)
@@ -460,7 +511,7 @@ class FIRST_FormClass(idaapi.PluginForm):
             name_str = name_str.replace(':08x}', ':016x}')
         root_node = data_model.invisibleRootItem()
         cmp_func = lambda x,y: cmp(x.address, y.address)
-        for match in sorted(data.values(), cmp=cmp_func):
+        for match in sorted(list(data.values()), key=functools.cmp_to_key(cmp_func)):
             #   Row: <address and name> <prototype> <creator>
             name = QtGui.QStandardItem(name_str.format(match))
             prototype = QtGui.QStandardItem(match.prototype)
@@ -517,7 +568,7 @@ class FIRST_FormClass(idaapi.PluginForm):
 
         menu = QtWidgets.QMenu(self.applied_tree_view)
         goto_action = QtWidgets.QAction('&Go to Function', self.applied_tree_view)
-        goto_action.triggered.connect(lambda:IDAW.Jump(address))
+        goto_action.triggered.connect(lambda:IDAW.jumpto(address))
         menu.addAction(goto_action)
 
         metadata_id = index.data(FIRSTUI.ROLE_ID)
@@ -586,11 +637,11 @@ class FIRST_FormClass(idaapi.PluginForm):
         FIRST.Callbacks.accepted(self, dialog)
 
     def check_function(self, ctx):
-        if not IDAW.get_func(IDAW.ScreenEA()):
+        if not IDAW.get_func(IDAW.get_screen_ea()):
             title = 'Unable to derive function'
             msg = ( 'Cannot upload function. Ensure the cursor is '
                     'positioned within a defined function (cursor '
-                    'currently at 0x{0:X})').format(IDAW.ScreenEA())
+                    'currently at 0x{0:X})').format(IDAW.get_screen_ea())
             idaapi.execute_ui_requests((FIRSTUI.Requests.MsgBox(title, msg),))
             return
 
@@ -625,13 +676,13 @@ class FIRST_FormClass(idaapi.PluginForm):
             idaapi.execute_ui_requests((FIRSTUI.Requests.MsgBox(title, msg, QtWidgets.QMessageBox.Information),))
 
     def view_history(self, ctx):
-        function = IDAW.get_func(IDAW.ScreenEA())
+        function = IDAW.get_func(IDAW.get_screen_ea())
         if not function:
-            msg = '[1st] Unable to retrieve function at 0x{0:x}\n'.format(IDAW.ScreenEA())
+            msg = '[1st] Unable to retrieve function at 0x{0:x}\n'.format(IDAW.get_screen_ea())
             idaapi.execute_ui_requests((FIRSTUI.Requests.Print(msg),))
             return
 
-        metadata = FIRST.Metadata.get_function(function.startEA)
+        metadata = FIRST.Metadata.get_function(function.start_ea)
         if not metadata:
             message = '[1st] Unable to retrieve function at 0x{0:x}\n'
             idaapi.execute_ui_requests((FIRSTUI.Requests.Print(message.format(metadata.address)),))
@@ -736,10 +787,10 @@ class FIRST(object):
             for function_ea in IDAW.Functions():
                 function = IDAW.get_func(function_ea)
                 if function:
-                    mnem = IDAW.GetMnem(function.startEA)
-                    op_type = IDAW.GetOpType(function.startEA, 0)
-                    if not (('jmp' == mnem) and (op_type == IDAW.o_mem)):
-                        addresses.append(function.startEA)
+                    mnem = IDAW.print_insn_mnem(function.start_ea)
+                    op_type = IDAW.get_operand_type(function.start_ea, 0)
+                    if not (('jmp' == mnem) and (op_type == idc.o_mem)):
+                        addresses.append(function.start_ea)
 
             return addresses
 
@@ -779,11 +830,11 @@ class FIRST(object):
             if not isinstance(segment, idaapi.segment_t):
                 return None
 
-            segment_offset = segment.startEA - IDAW.get_imagebase()
+            segment_offset = segment.start_ea - IDAW.get_imagebase()
             if segment_offset not in FIRST.function_list:
                 return None
 
-            return FIRST.function_list[segment_offset].values()
+            return list(FIRST.function_list[segment_offset].values())
 
         @staticmethod
         def populate_function_list():
@@ -806,7 +857,7 @@ class FIRST(object):
             FIRST.function_list = {}
             idaapi.show_wait_box('Initializing FIRST\'s cache')
             for address in FIRST.Metadata.get_non_jmp_wrapped_functions():
-                function_name = IDAW.GetFunctionName(address)
+                function_name = IDAW.get_func_name(address)
                 function = FIRST.MetadataShim(address, function_name)
                 db_function = FIRST.DB.get_function(function=function)
 
@@ -858,20 +909,19 @@ class FIRST(object):
             #   Ensure this is the start of a function and not just a repeatable
             #   label somewhere else
             function = IDAW.get_func(function_address)
-            if (not function) or (function_address != function.startEA):
+            if (not function) or (function_address != function.start_ea):
                 return None
 
             #   Calculate offset to function from segment
-            segment = IDAW.getseg(function.startEA)
+            segment = IDAW.getseg(function.start_ea)
             if not segment:
                 return None
-            seg_offset = segment.startEA - IDAW.get_imagebase()
-            offset = function.startEA - segment.startEA
+            seg_offset = segment.start_ea - IDAW.get_imagebase()
+            offset = function.start_ea - segment.start_ea
 
             if ((seg_offset not in FIRST.function_list)
                 or (offset not in FIRST.function_list[seg_offset])):
                 return None
-
             return FIRST.function_list[seg_offset][offset]
 
         @staticmethod
@@ -923,20 +973,21 @@ class FIRST(object):
             '''
             #   Validate User Input
             md5 = md5.lower()
+            
             if not re.match(r'^[a-f\d]{32}$', md5) or type(crc32) != int:
                 return
 
-            db = IDAW.GetArrayId(FIRST_DB)
+            db = IDAW.get_array_id(FIRST_DB)
             key = FIRST_INDEX['hashes']
             if -1 == db:
-                db = IDAW.CreateArray(FIRST_DB)
+                db = IDAW.create_array(FIRST_DB)
 
             #   Get hashes from file
             data = {'md5' : md5,
                     'sha1' : sha1,
                     'sha256' : sha256,
                     'crc32' : crc32}
-            IDAW.SetArrayString(db, key, json.dumps(data))
+            IDAW.set_array_string(db, key, json.dumps(data))
 
             #   Update server class
             if FIRST.server and hasattr(FIRST.server, 'binary_info'):
@@ -956,23 +1007,23 @@ class FIRST(object):
             Returns:
                 dict. Dictionary of file hashes and CRC32.
             '''
-            db = IDAW.GetArrayId(FIRST_DB)
+            db = IDAW.get_array_id(FIRST_DB)
             key = FIRST_INDEX['hashes']
             if -1 != db:
-                data = IDAW.GetArrayElement(IDAW.AR_STR, db, key)
+                data = IDAW.get_array_element(IDAW.AR_STR, db, key)
                 if 0 != data:
                     return json.loads(data)
 
             else:
-                db = IDAW.CreateArray(FIRST_DB)
+                db = IDAW.create_array(FIRST_DB)
 
             #   Get hashes from file
-            data = {'md5' : IDAW.GetInputMD5(),
+            data = {'md5' : IDAW.retrieve_input_file_md5().hex(),
                     'sha1' : None,
                     'sha256' : None,
                     'crc32' : IDAW.retrieve_input_file_crc32()}
-
-            file_path = IDAW.GetInputFilePath()
+            
+            file_path = IDAW.get_input_file_path()
             if file_path and exists(file_path):
                 with open(file_path, 'rb') as f:
                     f_data = f.read()
@@ -980,7 +1031,7 @@ class FIRST(object):
                     data['sha256'] = sha256(f_data).hexdigest()
 
                 #   Store this in the IDB so it can be retrieved
-                IDAW.SetArrayString(db, key, json.dumps(data))
+                IDAW.set_array_string(db, key, json.dumps(data))
 
             return data
 
@@ -991,7 +1042,7 @@ class FIRST(object):
             Returns:
                 bool: True is 32bit or False.
             '''
-            if (idaapi.IDA_SDK_VERSION < 730):
+            if (IDAW.IDA_SDK_VERSION < 730):
                 info = IDAW.get_inf_structure()
                 if info.is_64bit():
                     return False
@@ -1000,26 +1051,24 @@ class FIRST(object):
 
                 return False
             else:
-                return IDAW.inf_is_32bit()
+                return IDAW.inf_is_32bit_or_higher()
 
         @staticmethod
         def get_architecture():
             '''Returns the architecture the sample is built for.
-
             The values are normalized for the FIRST server. It altered then
             FIRST will not match on other functions with the same architecture.
-
             Returns:
                 str. String representation of the architecture associated with
                     the sample. Examples: intel32, intel64, arm32, mips, etc.
             '''
             info = IDAW.get_inf_structure()
-            proc = info.procName.lower()
+            proc = info.procname.lower()
             proc = FIRST.Info.processor_map.get(proc, proc)
 
             if proc in FIRST.Info.include_bits:
                 bits = 16
-                if (idaapi.IDA_SDK_VERSION < 730):
+                if (IDAW.IDA_SDK_VERSION < 730):
                     if info.is_64bit():
                         bits = 64
                     elif info.is_32bit():
@@ -1027,11 +1076,9 @@ class FIRST(object):
                 else:
                     if IDAW.inf_is_64bit():
                         bits = 64
-                    elif IDAW.inf_is_32bit():
+                    elif IDAW.inf_is_32bit_or_higher():
                         bits = 32
-
                 return '{}{}'.format(proc, bits)
-
             return proc
 
         @staticmethod
@@ -1060,21 +1107,20 @@ class FIRST(object):
             fc = IDAW.FlowChart(function)
 
             for block in fc:
-                data = {'start' : block.startEA, 'end' : block.endEA}
-                data['size'] = block.endEA - block.startEA
-                data['bytes'] = IDAW.GetManyBytes(block.startEA, data['size'])
+                data = {'start' : block.start_ea, 'end' : block.end_ea}
+                data['size'] = block.end_ea - block.start_ea
+                data['bytes'] = IDAW.get_bytes(block.start_ea, data['size'])
 
                 if data['size'] > 0:
-                    blocks[block.startEA] = data
+                    blocks[block.start_ea] = data
 
             if not blocks:
                 return None
 
-            sig = ''
-            for address in sorted(blocks.keys()):
+            sig = b''
+            for address in sorted(list(blocks.keys())):
                 if 'bytes' in blocks[address]:
                     sig += blocks[address]['bytes']
-
             return sig
 
         @staticmethod
@@ -1098,20 +1144,21 @@ class FIRST(object):
                 func = lambda ea, name, ord: FIRST.iat.append(name) == None
                 imports = IDAW.get_import_module_qty()
                 if imports:
-                    for i in xrange(imports):
+                    for i in range(imports):
                         IDAW.enum_import_names(i, func)
 
             #   Cycle through all instructions within the function
-            for instr in safe_generator(IDAW.FuncItems(address)):
+            for instr in IDAW.FuncItems(address):
                 name = None
                 if not IDAW.is_call_insn(instr):
-                    instruction = IDAW.DecodeInstruction(instr)
+                    instruction = IDAW.insn_t()
+                    length = IDAW.decode_insn(instruction, instr)
                     if not instruction:
                         continue
 
-                    for i in xrange(len(instruction.Operands)):
-                        if IDAW.GetOpType(instr, i) == idaapi.o_mem:
-                            name = IDAW.Name(IDAW.GetOperandValue(instr, i))
+                    for i in range(len(instruction.ops)):
+                        if IDAW.get_operand_type(instr, i) == idc.o_mem:
+                            name = IDAW.get_name(IDAW.get_operand_value(instr, i))
                             break
 
                 else:
@@ -1120,7 +1167,7 @@ class FIRST(object):
                         if xref.to == None:
                             break
 
-                        name = IDAW.NameEx(0, xref.to)
+                        name = IDAW.get_name(xref.to)
 
                 if (name in FIRST.iat) and (name not in apis):
                     apis.append(name)
@@ -1184,7 +1231,7 @@ class FIRST(object):
                 max_str = hex(FIRST.DB.max_records)[2:]
                 if (len(max_str) % 2) != 0:
                     max_str = '0' + max_str
-                max_str = max_str.decode('hex')
+                max_str = bytes.fromhex(max_str).decode()
 
                 data = function.to_db()
                 records = len(data) + len(max_str)
@@ -1193,19 +1240,19 @@ class FIRST(object):
                 record_str = hex(records)[2:]
                 if (len(record_str) % 2) != 0:
                     record_str = '0' + record_str
-                record_str = record_str.decode('hex')
+                record_str = bytes.fromhex(record_str).decode()
 
                 start = FIRST.DB.record_size - len(max_str)
-                IDAW.SetArrayString(tag, key, record_str + data[:start])
+                IDAW.set_array_string(tag, key, record_str + data[:start])
                 if records > FIRST.DB.max_records:
                     temp_str = 'Cannot store data for function: {0}\n'
                     idaapi.execute_ui_requests((FIRSTUI.Requests.Print(temp_str.format(function.name)),))
                     continue
 
-                for i in xrange(1, records):
+                for i in range(1, records):
                     begin = start + ((i + 1) * FIRST.DB.record_size)
                     end = begin + FIRST.DB.record_size
-                    IDAW.SetArrayString(tag, key + i, data[begin:end])
+                    IDAW.set_array_string(tag, key + i, data[begin:end])
 
         @staticmethod
         def get_function(address=None, function=None):
@@ -1243,19 +1290,19 @@ class FIRST(object):
             max_str = hex(FIRST.DB.max_records)[2:]
             if (len(max_str) % 2) != 0:
                 max_str = '0' + max_str
-            max_str = max_str.decode('hex')
+            max_str = bytes.fromhex(max_str).decode()
 
-            first = IDAW.GetArrayElement(IDAW.AR_STR, tag, key)
+            first = IDAW.get_array_element(IDAW.AR_STR, tag, key)
             if not first:
                 return None
 
             data = first[len(max_str):]
             records = 0
             for r in first[:len(max_str)]:
-                records = (records << 16) | ord(r)
+                records = (records << 16) | r
 
-            for i in xrange(1, records):
-                new_data = IDAW.GetArrayElement(IDAW.AR_STR, tag, key + i)
+            for i in range(1, records):
+                new_data = IDAW.get_array_element(IDAW.AR_STR, tag, key + i)
                 if 0 == new_data:
                     break
 
@@ -1284,10 +1331,10 @@ class FIRST(object):
                 return None
 
             array_str = 'FIRST_{0}'.format(function.segment - IDAW.get_imagebase())
-            tag = IDAW.GetArrayId(array_str)
+            tag = IDAW.get_array_id(array_str)
             if -1 == tag:
                 #   The array doesn't exist, create it
-                tag = IDAW.CreateArray(array_str)
+                tag = IDAW.create_array(array_str)
                 if -1 == tag:
                     return None
 
@@ -1445,7 +1492,7 @@ class FIRST(object):
 
         @address.setter
         def address(self, address):
-            if type(address) not in [int, long]:
+            if type(address) not in [int, int]:
                 return
 
             self.__address = address
@@ -1453,7 +1500,7 @@ class FIRST(object):
         @property
         def name(self):
             ''':obj:`str`: The name of the function'''
-            return IDAW.GetFunctionName(self.__address)
+            return IDAW.get_func_name(self.__address)
 
         @name.setter
         def name(self, name):
@@ -1462,7 +1509,7 @@ class FIRST(object):
             if (None == name) or name.startswith('sub_'):
                 return
 
-            IDAW.MakeName(self.address, name.encode('utf-8'))
+            IDAW.set_name(self.address, name)
 
         def update_name(self):
             '''Updates IDB DB if name has changed since last snapshot.'''
@@ -1505,7 +1552,7 @@ class FIRST(object):
             '''
             function = IDAW.get_func(self.address)
             if function:
-                comment = IDAW.get_func_cmt(function, 1)
+                comment = IDAW.get_func_cmt(self.address, 1)
                 if comment:
                     return comment[:1024]
 
@@ -1516,7 +1563,7 @@ class FIRST(object):
             if None == comment_str:
                 return
 
-            IDAW.SetFunctionCmt(self.address, comment_str.encode('utf-8'), 1)
+            IDAW.set_func_cmt(self.address, comment_str, 1)
 
         def update_comment(self):
             '''Updates IDB DB if comment has changed since last snapshot.'''
@@ -1526,7 +1573,7 @@ class FIRST(object):
         @property
         def prototype(self):
             ''':obj:`str`: The prototype of the function'''
-            prototype = IDAW.GetType(self.address)
+            prototype = idc.get_type(self.address)
 
             if not prototype:
                 prototype = ''
@@ -1538,7 +1585,7 @@ class FIRST(object):
             if None == prototype_str:
                 return
 
-            prototype_str = prototype_str.encode('utf-8')
+            prototype_str = prototype_str
 
             if prototype_str:
                 prototype_str += ';'
@@ -1559,7 +1606,7 @@ class FIRST(object):
             '''
             segment = IDAW.getseg(self.__address)
             if segment:
-                return segment.startEA
+                return segment.start_ea
 
             return None
 
@@ -1791,15 +1838,15 @@ class FIRST(object):
         '''
         def __init__(self, config=None):
             self.__server = 'first.talosintelligence.com'
-            self.__port = 80
-            self.__protocol = 'http'
+            self.__port = 443
+            self.__protocol = 'https'
             self.__verify = False
             self.__auth = False
             self.__api_key = ''
             self.__data = {}
 
             #   Load configuration
-            if isinstance(config, ConfigParser.RawConfigParser):
+            if isinstance(config, RawConfigParser):
                 self.load_config(config)
 
         @property
@@ -1877,7 +1924,7 @@ class FIRST(object):
             Args:
                 config_path (:obj:`str`): File path to save configuration.
             '''
-            config = ConfigParser.RawConfigParser()
+            config = RawConfigParser()
 
             section = 'connection_info'
             values = {  'server' : self.server, 'port' : self.port,
@@ -1886,17 +1933,17 @@ class FIRST(object):
                         'api_key' : self.api_key}
 
             config.add_section(section)
-            for option, value in values.iteritems():
+            for option, value in values.items():
                 config.set(section, option, value)
 
             if len(self.__data):
                 section = 'settings'
                 config.add_section(section)
-                for option, value in self.__data.iteritems():
+                for option, value in self.__data.items():
                     config.set(section, option, value)
 
             try:
-                with open(config_path, 'wb') as f:
+                with open(config_path, 'w') as f:
                     config.write(f)
             except IOError as e:
                 idaapi.execute_ui_requests((FIRSTUI.Requests.Print(str(e) + '\n'),))
@@ -1908,7 +1955,7 @@ class FIRST(object):
                 config (:obj:`RawConfigParser`): The configuration details to
                     load.
             '''
-            if not isinstance(config, ConfigParser.RawConfigParser):
+            if not isinstance(config, RawConfigParser):
                 return
 
             self.__data = {}
@@ -1922,7 +1969,7 @@ class FIRST(object):
                             'authentication' : self.set_authentication,
                             'api_key' : self.set_api_key}
 
-                for option, set_function in required.iteritems():
+                for option, set_function in required.items():
                     if config.has_option(section, option):
                         set_function(config.get(section, option))
 
@@ -2090,7 +2137,7 @@ class FIRST(object):
 
                 if raw:
                     return response
-
+            
             except requests.exceptions.ConnectionError as e:
                 title = 'Cannot connect to FIRST'
                 msg = ('Unable to connect to FIRST server at {0}\n'
@@ -2106,9 +2153,9 @@ class FIRST(object):
                 return
 
             if FIRST.debug:
-                print response
+                print(response)
                 if 'content' in dir(response):
-                    print response.content
+                    print(response.content)
 
             if 'status_code' not in dir(response):
                 return None
@@ -2236,7 +2283,6 @@ class FIRST(object):
             if server_thread in self.threads:
                 del self.threads[server_thread]
 
-        #   Test connection URL
         def test_connection(self):
             '''Interacts with server to see if there is a valid connection.
 
@@ -2256,7 +2302,6 @@ class FIRST(object):
 
             return data and ('status' in data) and ('connected' == data['status'])
 
-        #   Signature URLS
         def add(self, metadata, data_callback=None, complete_callback=None):
             '''Adds function metadata to FIRST.
 
@@ -2283,7 +2328,30 @@ class FIRST(object):
             thread.daemon = True
             thread.start()
             return thread
+        
+        def add_c(self, metadata, data_callback=None, complete_callback=None):
+            '''Adds function metadata to FIRST.
 
+            This is a long operation, thus it has the option of providing a
+            ``data_callback`` and ``complete_callback`` arguments. Those
+            arguments are functions that will be called with the newly returned
+            data and when the whole operation is complete, respectively. Both
+            functions should follow the below their respective prototypes;
+            ``data_callback_prototype`` and ``complete_callback_prototype``.
+
+            Args:
+                metadata (:obj:`list` of :obj:`MetadataShim` or
+                    :obj:`MetadataShim`): The metadata to be added to FIRST.
+                data_callback (:obj:`data_callback_prototype`, optional):
+                    A function to call when data is receieved from the server.
+                complete_callback (:obj:`complete_callback_prototype`, optional):
+                    A function to call when the whole long operation completes.
+
+            Returns:
+                threading.Thread. The thread created for the operation.
+            '''
+            self.__thread_add(metadata, data_callback, complete_callback)
+        
         def __thread_add(self, metadata, data_callback=None, complete_callback=None):
             '''thread'''
             thread = threading.current_thread()
@@ -2297,16 +2365,15 @@ class FIRST(object):
                 self.threads[thread]['complete'] = True
                 if complete_callback:
                     complete_callback(thread, self.threads[thread])
-
                 return
 
             architecture = FIRST.Info.get_architecture()
-            for i in xrange(0, len(metadata), self.MAX_CHUNK):
+            for i in range(0, len(metadata), self.MAX_CHUNK):
                 params = self._min_info()
                 data = {}
                 for m in metadata[i:i + self.MAX_CHUNK]:
                     data[m.address] = { 'architecture' : architecture,
-                                        'opcodes' : b64encode(m.signature),
+                                        'opcodes' : b64encode(m.signature).decode(),
                                         'name' : m.name,
                                         'prototype' : m.prototype,
                                         'comment' : m.comment,
@@ -2444,6 +2511,27 @@ class FIRST(object):
             thread.start()
             return thread
 
+        def created_c(self, data_callback=None, complete_callback=None):
+            '''Retrieves FIRST annotations the user has created.
+
+            This is a long operation, thus it has the option of providing a
+            ``data_callback`` and ``complete_callback`` arguments. Those
+            arguments are functions that will be called with the newly returned
+            data and when the whole operation is complete, respectively. Both
+            functions should follow the below their respective prototypes;
+            ``data_callback_prototype`` and ``complete_callback_prototype``.
+
+            Args:
+                data_callback (:obj:`data_callback_prototype`, optional):
+                    A function to call when data is receieved from the server.
+                complete_callback (:obj:`complete_callback_prototype`, optional):
+                    A function to call when the whole long operation completes.
+
+            Returns:
+                threading.Thread. The thread created for the operation.
+            '''
+            self.__thread_created(data_callback, complete_callback)
+
         def __thread_created(self, data_callback=None, complete_callback=None):
             '''Thread to get created data'''
             thread = threading.current_thread()
@@ -2515,6 +2603,29 @@ class FIRST(object):
             thread.start()
             return thread
 
+        def get_c(self, metadata_ids, data_callback=None, complete_callback=None):
+            '''Retrieves FIRST annotations the user has created.
+
+            This is a long operation, thus it has the option of providing a
+            ``data_callback`` and ``complete_callback`` arguments. Those
+            arguments are functions that will be called with the newly returned
+            data and when the whole operation is complete, respectively. Both
+            functions should follow the below their respective prototypes;
+            ``data_callback_prototype`` and ``complete_callback_prototype``.
+
+            Args:
+                metadata (:obj:`list` of :obj:`MetadataShim`): The metadata to
+                    be retrieved from FIRST.
+                data_callback (:obj:`data_callback_prototype`, optional):
+                    A function to call when data is receieved from the server.
+                complete_callback (:obj:`complete_callback_prototype`, optional):
+                    A function to call when the whole long operation completes.
+
+            Returns:
+                threading.Thread. The thread created for the operation.
+            '''
+            self.__thread_get(metadata_ids, data_callback, complete_callback)
+
         def __thread_get(self, metadata, data_callback=None, complete_callback=None):
             '''Thread to get metadata'''
             thread = threading.current_thread()
@@ -2524,14 +2635,16 @@ class FIRST(object):
             if isinstance(metadata, FIRST.MetadataShim):
                 metadata = [metadata]
 
+            metadata = list(metadata)
             if False in [isinstance(m, FIRST.MetadataShim) for m in metadata]:
                 self.threads[thread]['complete'] = True
                 return
 
-            for i in xrange(0, len(metadata), self.MAX_CHUNK):
+            for i in range(0, len(metadata), self.MAX_CHUNK):
                 if self.threads[thread]['stop']:
                     break
-
+                
+                
                 data = [m.id for m in metadata[i:i + self.MAX_CHUNK]]
 
                 try:
@@ -2548,7 +2661,7 @@ class FIRST(object):
                     continue
 
                 results = {}
-                for metadata_id, details in response['results'].iteritems():
+                for metadata_id, details in response['results'].items():
                     results[metadata_id] = FIRST.MetadataServer(details)
 
                 if 0 < len(results):
@@ -2588,6 +2701,29 @@ class FIRST(object):
             thread.start()
             return thread
 
+        def scan_c(self, metadata, data_callback=None, complete_callback=None):
+            '''Queries FIRST for matches.
+
+            This is a long operation, thus it has the option of providing a
+            ``data_callback`` and ``complete_callback`` arguments. Those
+            arguments are functions that will be called with the newly returned
+            data and when the whole operation is complete, respectively. Both
+            functions should follow the below their respective prototypes;
+            ``data_callback_prototype`` and ``complete_callback_prototype``.
+
+            Args:
+                metadata (:obj:`list` of :obj:`MetadataShim`): The metadata to
+                    be queried for matches in FIRST.
+                data_callback (:obj:`data_callback_prototype`, optional):
+                    A function to call when data is receieved from the server.
+                complete_callback (:obj:`complete_callback_prototype`, optional):
+                    A function to call when the whole long operation completes.
+
+            Returns:
+                threading.Thread. The thread created for the operation.
+            '''
+            self.__thread_scan(metadata, data_callback, complete_callback)
+
         def __thread_scan(self, metadata, data_callback=None, complete_callback=None):
             '''Thread to query FIRST for metadata'''
             thread = threading.current_thread()
@@ -2603,7 +2739,7 @@ class FIRST(object):
 
             subkeys = {'engines', 'matches'}
             architecture = FIRST.Info.get_architecture()
-            for i in xrange(0, len(metadata), self.MAX_CHUNK):
+            for i in range(0, len(metadata), self.MAX_CHUNK):
                 if self.threads[thread]['stop']:
                     break
 
@@ -2614,7 +2750,7 @@ class FIRST(object):
                     if not signature:
                         continue
 
-                    data[m.address] = { 'opcodes' : b64encode(m.signature),
+                    data[m.address] = { 'opcodes' : b64encode(m.signature).decode(),
                                         'apis' : m.apis,
                                         'architecture' : architecture}
 
@@ -2791,7 +2927,8 @@ class FIRST(object):
             '''
             def __init__(self, header, data, parent=None):
                 super(FIRST.Model.Upload, self).__init__(header, data, parent)
-                self._data.sort(cmp=lambda x,y: cmp(x.offset, y.offset))
+                cmp_func = lambda x,y: cmp(x.offset, y.offset)
+                self._data = sorted(self._data, key=functools.cmp_to_key(cmp_func))
                 self.__original_data = self._data
 
                 self.select_all_flag = False
@@ -2814,7 +2951,7 @@ class FIRST(object):
                 Args:
                     flag (:obj:`bool`): Flag to select or deselect all.
                 '''
-                self.rows_selected = set(xrange(len(self._data))) if flag else set()
+                self.rows_selected = set(range(len(self._data))) if flag else set()
 
             def filter_sub_functions(self, flag):
                 '''Filters out or restores any sub_* functions.
@@ -2979,7 +3116,7 @@ class FIRST(object):
                 if flag:
                     #   Reset list
                     self.ids_selected = set()
-                    for address, matches in self._data.iteritems():
+                    for address, matches in self._data.items():
                         #   If address is hidden then skip it
                         if address in hidden:
                             continue
@@ -3114,7 +3251,7 @@ class FIRST(object):
             '''Registered callback for accept dialog action.
 
             Args:
-                fclass (:obj:`idaapi.PluginForm`): The plugin form part of
+                fclass (:obj:`IDAW.PluginForm`): The plugin form part of
                 dialog (:obj:`FIRSTUI.*`): A dialog box object.
             '''
             if (isinstance(dialog, FIRSTUI.Upload)
@@ -3165,10 +3302,10 @@ class FIRST(object):
                 total = len(data)
                 idaapi.show_wait_box(message.format(total, int(i)))
                 try:
-                    for address, metadata in data.iteritems():
+                    for address, metadata in data.items():
                         function = FIRST.Metadata.get_function(address)
 
-                        if idaapi.wasBreak():
+                        if idaapi.user_cancelled():
                             raise FIRST.Error('canceled')
 
                         if function:
@@ -3245,27 +3382,27 @@ class FIRST(object):
                         return
 
                     msg = '[1st] Error: {}'.format(data['msg'])
-                    print msg
+                    print(msg)
                     #idaapi.execute_ui_requests((FIRSTUI.Requests.Print(msg),))
                     return
 
                 if ('results' not in data):
                     idaapi.hide_wait_box()
                     msg = '[1st] Error: no results returned'
-                    print msg
+                    print(msg)
                     #idaapi.execute_ui_requests((FIRSTUI.Requests.Print(msg),))
                     return
 
                 results = data['results']
 
-                for address, metadata_id in results.iteritems():
+                for address, metadata_id in results.items():
                     #   Update Wait Box
                     self.uploaded += 1
                     percentage = int((self.uploaded / self.total) * 100)
                     msg = self.message.format(self.total, percentage)
                     idaapi.replace_wait_box(msg)
 
-                    if idaapi.wasBreak():
+                    if idaapi.user_cancelled():
                         FIRST.server.stop_operation(thread)
                         msg = 'Not all functions were added to FIRST'
                         idaapi.execute_ui_requests((FIRSTUI.Requests.Print(msg),))
@@ -3308,14 +3445,14 @@ class FIRST(object):
                 self.total = len(self.functions)
                 self.updated = 0
 
-                server_thread = FIRST.server.get(self.functions.values(),
+                server_thread = FIRST.server.get(list(self.functions.values()),
                                                     self.__data, self.__complete)
 
             def __data(self, thread, data):
                 if (not data) and (dict != type(data)):
                     return
 
-                for metadata_id, metadata in data.iteritems():
+                for metadata_id, metadata in data.items():
                     if metadata_id not in self.functions:
                         continue
 
@@ -3332,7 +3469,7 @@ class FIRST(object):
 
                 #   If functions are still in the queue, this means the metadata
                 #   was deleted on the server remove the id from it
-                for function in self.functions.values():
+                for function in list(self.functions.values()):
                     function.id = None
 
     class Hook():
@@ -3344,7 +3481,7 @@ class FIRST(object):
                 is_preprocess (:obj:`bool`, optional): True if called during
                     preprocess, False when called during postprocess.
             '''
-            function = FIRST.Metadata.get_function(IDAW.ScreenEA())
+            function = FIRST.Metadata.get_function(IDAW.get_screen_ea())
 
             if not function:
                 return
@@ -3363,7 +3500,7 @@ class FIRST(object):
                 is_preprocess (:obj:`bool`, optional): True if called during
                     preprocess, False when called during postprocess.
             '''
-            function = FIRST.Metadata.get_function(IDAW.ScreenEA())
+            function = FIRST.Metadata.get_function(IDAW.get_screen_ea())
 
             if not function:
                 return
@@ -3382,7 +3519,7 @@ class FIRST(object):
                 is_preprocess (:obj:`bool`, optional): True if called during
                     preprocess, False when called during postprocess.
             '''
-            function = FIRST.Metadata.get_function(IDAW.ScreenEA())
+            function = FIRST.Metadata.get_function(IDAW.get_screen_ea())
 
             if not function:
                 return
@@ -3410,7 +3547,7 @@ class FIRST(object):
             if is_preprocess:
                 return
 
-            ea = IDAW.ScreenEA()
+            ea = IDAW.get_screen_ea()
 
             #   Ensure it is a function or was correctly created
             function = IDAW.get_func(ea)
@@ -3450,7 +3587,7 @@ class FIRST(object):
                 return
 
             for segment in FIRST.Metadata.get_segments_with_functions():
-                offset = segment.startEA - IDAW.get_imagebase()
+                offset = segment.start_ea - IDAW.get_imagebase()
 
                 for metadata in FIRST.Metadata.get_segment_functions(segment):
                     adjustment = IDAW.get_imagebase() - FIRST.Hook.old_imagebase
@@ -3483,7 +3620,7 @@ class FIRST(object):
                     #   Get/Initialize the hash details for the file
                     FIRST.Info.get_file_details()
 
-                    config = ConfigParser.RawConfigParser()
+                    config = RawConfigParser()
                     if not config.read(FIRST.config_path):
                         FIRST.show_welcome = True
                         config = None
@@ -3501,7 +3638,7 @@ class FIRST(object):
 
                         FIRST.plugin_enabled = True
 
-            if idaapi.get_kernel_version().startswith("7"):
+            if IDAW.get_kernel_version().startswith("7"):
                 def ev_auto_queue_empty(self, arg):
                     self.on_auto_queue_empty(arg)
                     return super(self.__class__, self).ev_auto_queue_empty(arg)
@@ -3527,9 +3664,9 @@ class FIRST(object):
                                 'RebaseProgram' : [FIRST.Hook.function_rebase]}
                 self.handler_action = ''
 
-            def tform_visible(self, form, hwnd):
+            def widget_visible(self, form):
                 '''Shows the FIRST Welcome dialog box if required.'''
-                if ((IDAW.BWN_DISASMS == IDAW.get_tform_type(form))
+                if ((IDAW.BWN_DISASMS== IDAW.get_widget_type(form))
                     and FIRST.show_welcome):
                     parent = idaapi.PluginForm.FormToPyQtWidget(form)
 
@@ -3538,7 +3675,7 @@ class FIRST(object):
                     welcome_dialog.show()
                     FIRST.show_welcome = False
 
-            def finish_populating_tform_popup(self, form, popup):
+            def finish_populating_widget_popup(self, form, popup):
                 '''Initializes UI change hooks and enables right click menu.'''
                 if None == FIRST.plugin:
                     return
@@ -3586,9 +3723,9 @@ class FIRST(object):
                     self.init_actions()
                     self.handlers_created = True
 
-                tform_type = IDAW.get_tform_type(form)
-                if IDAW.BWN_DISASMS == tform_type and FIRST.plugin_enabled:
-                    func = IDAW.get_func(IDAW.ScreenEA())
+                tform_type = IDAW.get_widget_type(form)
+                if IDAW.BWN_DISASMS== tform_type and FIRST.plugin_enabled:
+                    func = IDAW.get_func(IDAW.get_screen_ea())
 
                     IDAW.attach_action_to_popup(form, popup, '')
                     for name in self.action_names[:-1]:
@@ -3599,7 +3736,7 @@ class FIRST(object):
                         IDAW.attach_action_to_popup(form, popup, name)
 
                     if type(func) == idaapi.func_t:
-                        function = FIRST.Metadata.get_function(func.startEA)
+                        function = FIRST.Metadata.get_function(func.start_ea)
                         if function and function.id:
                             IDAW.attach_action_to_popup(form, popup, self.action_names[-1])
 
@@ -3920,14 +4057,14 @@ class FIRSTUI(object):
             if full:
                 engine_info = match.engine_info
                 msg = '<p><b>{}</b><br/>{}</p>'
-                tooltip = [msg.format(k,v) for k,v in engine_info.iteritems()]
+                tooltip = [msg.format(k,v) for k,v in engine_info.items()]
                 tooltip = '<hr style="margin:1px"/>'.join(tooltip)
 
                 prototype_tooltip.setToolTip(match.prototype)
                 prototype_tooltip.setTextAlignment(Qt.AlignCenter)
                 similarity = QtGui.QStandardItem(str(round(match.similarity, 2)) + '%')
                 similarity.setTextAlignment(Qt.AlignCenter)
-                engines = QtGui.QStandardItem(', '.join(engine_info.keys()))
+                engines = QtGui.QStandardItem(', '.join(list(engine_info.keys())))
                 engines_tooltip = QtGui.QStandardItem('...')
                 engines_tooltip.setTextAlignment(Qt.AlignCenter)
                 engines_tooltip.setToolTip(tooltip)
@@ -4077,7 +4214,7 @@ class FIRSTUI(object):
             colors = [  FIRST.color_changed, FIRST.color_unchanged,
                         FIRST.color_default, FIRST.color_selected]
             text = ['Changed', 'Unchanged', 'Default', 'Selected']
-            for i in xrange(len(colors)):
+            for i in range(len(colors)):
                 box = QtWidgets.QLabel()
                 box.setFixedHeight(10)
                 box.setFixedWidth(10)
@@ -4099,7 +4236,7 @@ class FIRSTUI(object):
             self.data_models = []
             self.total_functions = 0
 
-            segment_str = '0x{0.startEA:08x}-0x{0.endEA:08x}: Name "{1}"'
+            segment_str = '0x{0.start_ea:08x}-0x{0.end_ea:08x}: Name "{1}"'
             if not FIRST.Info.is_32bit():
                 segment_str = segment_str.replace(':08x}', ':016x}')
 
@@ -4120,14 +4257,15 @@ class FIRSTUI(object):
             try:
                 first_segment = True
                 for segment in segments:
-                    segment_name = IDAW.SegName(segment.startEA)
+                    # segment_name = idaapi.get_segm_name(segment.start_ea)
+                    segment_name = idaapi.get_name(segment.start_ea)
                     segment_info = segment_str.format(segment, segment_name)
                     segment_label = QtWidgets.QLabel(segment_info)
                     segment_label.setContentsMargins(10, 5, 0, 5)
 
                     func_db = FIRST.Metadata.get_segment_functions(segment)
                     self.total_functions += len(func_db)
-                    if idaapi.wasBreak():
+                    if idaapi.user_cancelled():
                         raise FIRST.Error('canceled')
 
                     data_model = FIRST.Model.Upload(header, func_db)
@@ -4161,7 +4299,7 @@ class FIRSTUI(object):
                     self.scroll_layout.addWidget(segment_label)
                     self.scroll_layout.addWidget(table_view)
 
-                    if idaapi.wasBreak():
+                    if idaapi.user_cancelled():
                         raise FIRST.Error('canceled')
 
             except FIRST.Error as e:
@@ -4200,7 +4338,7 @@ class FIRSTUI(object):
             self.filter_sub_funcs.stateChanged.connect(self.filter_sub_callback)
 
             callback = lambda y, z: lambda x: self.table_clicked(x, y, z)
-            for i in xrange(len(self.table_views)):
+            for i in range(len(self.table_views)):
                 table_view = self.table_views[i]
                 data_model = self.data_models[i]
                 table_view.clicked.connect(callback(table_view, data_model))
@@ -4254,7 +4392,7 @@ class FIRSTUI(object):
             self.dialog.resize(600, 250)
 
         def init_data_layout(self):
-            function = IDAW.get_func(IDAW.ScreenEA())
+            function = IDAW.get_func(IDAW.get_screen_ea())
             if not function:
                 msg_box = QtWidgets.QMessageBox()
                 msg_box.setIcon(QtWidgets.QMessageBox.Critical)
@@ -4264,10 +4402,10 @@ class FIRSTUI(object):
                 self.should_show = False
                 return
 
-            self.metadata = FIRST.Metadata.get_function(function.startEA)
+            self.metadata = FIRST.Metadata.get_function(function.start_ea)
             if not self.metadata:
                 temp_str = 'Unable to retrieve function at 0x{0:x}'
-                raise FIRST.Error(temp_str.format(IDAW.ScreenEA()))
+                raise FIRST.Error(temp_str.format(IDAW.get_screen_ea()))
 
             data = [('Name:', self.metadata.name, QtWidgets.QLineEdit),
                     ('Prototype:', self.metadata.prototype, QtWidgets.QLineEdit),
@@ -4371,7 +4509,7 @@ class FIRSTUI(object):
             style = 'background-color: #{0:06x}; border: 1px solid #c0c0c0;'
             colors = [FIRST.color_applied, FIRST.color_selected]
             text = ['Applied', 'Selected']
-            for i in xrange(len(colors)):
+            for i in range(len(colors)):
                 box = QtWidgets.QLabel()
                 box.setFixedHeight(10)
                 box.setFixedWidth(10)
@@ -4392,8 +4530,9 @@ class FIRSTUI(object):
             idaapi.show_wait_box('Checking FIRST for all functions')
 
             functions = FIRST.Metadata.get_non_jmp_wrapped_functions()
-            metadata = set([FIRST.Metadata.get_function(x) for x in functions])
-
+            temp = remove_dup([FIRST.Metadata.get_function(x) for x in functions])
+            # metadata = set([FIRST.Metadata.get_function(x) for x in functions])
+            metadata = temp
             if None in metadata:
                 metadata.remove(None)
 
@@ -4519,7 +4658,7 @@ class FIRSTUI(object):
 
             # Add db functions to the model
             root_node = model.invisibleRootItem()
-            for address, matches in data.iteritems():
+            for address, matches in data.items():
                 function = FIRST.Metadata.get_function(address)
 
                 func_row = self._make_function_item(function, len(matches))
@@ -4576,7 +4715,7 @@ class FIRSTUI(object):
 
             menu = QtWidgets.QMenu(self.tree_view)
             goto_action = QtWidgets.QAction('&Go to Function', self.tree_view)
-            goto_action.triggered.connect(lambda:IDAW.Jump(address))
+            goto_action.triggered.connect(lambda:IDAW.jumpto(address))
             menu.addAction(goto_action)
 
             metadata_id = index.data(FIRSTUI.ROLE_ID)
@@ -4620,7 +4759,7 @@ class FIRSTUI(object):
             hidden = []
             if flag and self.filter_sub_funcs_only.isChecked():
                 root = self.data_model.invisibleRootItem()
-                for i in xrange(root.rowCount()):
+                for i in range(root.rowCount()):
                     child = root.child(i)
                     if child and self.tree_view.isIndexHidden(child.index()):
                         hidden.append(child.data(FIRSTUI.ROLE_ADDRESS))
@@ -4633,7 +4772,7 @@ class FIRSTUI(object):
 
             hidden = []
             root = self.data_model.invisibleRootItem()
-            for i in xrange(root.rowCount()):
+            for i in range(root.rowCount()):
                 child = root.child(i)
                 if not child:
                     continue
@@ -4681,7 +4820,7 @@ class FIRSTUI(object):
             style = 'background-color: #{0:06x}; border: 1px solid #c0c0c0;'
             colors = [FIRST.color_applied, FIRST.color_selected]
             text = ['Applied', 'Selected']
-            for i in xrange(len(colors)):
+            for i in range(len(colors)):
                 box = QtWidgets.QLabel()
                 box.setFixedHeight(10)
                 box.setFixedWidth(10)
@@ -4704,7 +4843,7 @@ class FIRSTUI(object):
                 self._model_builder(self.data_model)
 
         def init_data_layout(self):
-            function = IDAW.get_func(IDAW.ScreenEA())
+            function = IDAW.get_func(IDAW.get_screen_ea())
             if not function:
                 title = 'FIRST: No Function Selected'
                 msg = ('No address was selected in the IDA View. '
@@ -4713,7 +4852,7 @@ class FIRSTUI(object):
                 self.should_show = False
                 return
 
-            self.metadata = FIRST.Metadata.get_function(function.startEA)
+            self.metadata = FIRST.Metadata.get_function(function.start_ea)
             if not self.metadata:
                 title = 'FIRST: Could not load function'
                 msg = ('FIRST is unable to get the function\'s '
@@ -4774,7 +4913,7 @@ class FIRSTUI(object):
             if not matches:
                 return
 
-            address = matches.keys()[0]
+            address = list(matches.keys())[0]
             for match in matches[address]:
                 row = FIRSTUI.SharedObjects.make_match_info(match, check_all=False)
                 root_node.appendRow(row)
@@ -4853,7 +4992,7 @@ class FIRSTUI(object):
             first_record = True
             cmp_func = lambda x,y: cmp( self.utc_to_local(y['committed']),
                                         self.utc_to_local(x['committed']))
-            for details in sorted(self.history, cmp_func):
+            for details in sorted(self.history, key=functools.cmp_to_key(cmp_func)):
                 if not first_record:
                     hr = QtWidgets.QFrame()
                     hr.setFrameShape(QtWidgets.QFrame.HLine)
@@ -5066,7 +5205,7 @@ def get_first_icon(return_hex=False, return_pixmap=False):
         return first_icon
 
     image = QtGui.QImage()
-    image.loadFromData(QtCore.QByteArray.fromHex(first_icon))
+    image.loadFromData(QtCore.QByteArray.fromHex(first_icon.encode()))
 
     pixmap = QtGui.QPixmap()
     pixmap.convertFromImage(image)
@@ -5075,7 +5214,7 @@ def get_first_icon(return_hex=False, return_pixmap=False):
 
     return QtGui.QIcon(pixmap)
 
-FIRST_ICON = get_first_icon(True).decode('hex')
+FIRST_ICON = bytes.fromhex(get_first_icon(True))
 FIRST_ICON = IDAW.load_custom_icon(data=FIRST_ICON, format='png')
 
 
