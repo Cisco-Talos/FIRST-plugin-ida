@@ -49,9 +49,8 @@ class MockHook(object):
     def hook(self):
         pass
 
-class _MyMockModule(sphinx.ext.autodoc._MockModule):
+class _MyMockModule(sphinx.ext.autodoc.importer._MockModule):
     '''Class created to get around autodoc issues with plugin's dependencies'''
-    @classmethod
     def __getattr__(self, name):
         if name in ['IDP_Hooks', 'UI_Hooks']:
             return MockHook
@@ -66,9 +65,9 @@ class _MyMockModule(sphinx.ext.autodoc._MockModule):
             return lambda:'str'
 
         else:
-            return _MyMockModule()
+            return sphinx.ext.autodoc.importer._MockObject()
 
-sphinx.ext.autodoc._MockModule = _MyMockModule
+sphinx.ext.autodoc.importer._MockModule = _MyMockModule
 
 
 # Add any paths that contain templates here, relative to this directory.
