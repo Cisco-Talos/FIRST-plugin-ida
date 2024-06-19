@@ -1,5 +1,11 @@
 .. _ida-installing:
 
+ARCHIVED PROJECT
+================
+
+THIS PROJECT HAS BEEN ARCHIVED AND ITS ISSUE QUEUE IS LOCKED. THE PROJECT WILL BE KEPT PUBLIC ONLY FOR REFERENCE PURPORSES.
+
+
 =================
 Installing Plugin
 =================

@@ -1,5 +1,10 @@
 .. _ida-currently-applied:
 
+ARCHIVED PROJECT
+================
+
+THIS PROJECT HAS BEEN ARCHIVED AND ITS ISSUE QUEUE IS LOCKED. THE PROJECT WILL BE KEPT PUBLIC ONLY FOR REFERENCE PURPORSES.
+
 =================
 Currently Applied
 =================

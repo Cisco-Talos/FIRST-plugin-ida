@@ -1,3 +1,8 @@
+ARCHIVED PROJECT
+================
+
+THIS PROJECT HAS BEEN ARCHIVED AND ITS ISSUE QUEUE IS LOCKED. THE PROJECT WILL BE KEPT PUBLIC ONLY FOR REFERENCE PURPORSES.
+
 FIRST IDA Pro Integration
 =========================
 Function Identification and Recovery Signature Tool

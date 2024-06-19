@@ -1,5 +1,10 @@
 .. _ida-view-history:
 
+ARCHIVED PROJECT
+================
+
+THIS PROJECT HAS BEEN ARCHIVED AND ITS ISSUE QUEUE IS LOCKED. THE PROJECT WILL BE KEPT PUBLIC ONLY FOR REFERENCE PURPORSES.
+
 =====================
 View Metadata History
 =====================
